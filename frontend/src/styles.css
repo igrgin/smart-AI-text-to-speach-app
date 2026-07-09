@@ -2,8 +2,8 @@
   color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f6f7f4;
-  color: #20261f;
+  background: #f4f6f8;
+  color: #1f2937;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -79,14 +79,14 @@ h1 {
   min-height: 2.75rem;
   border: 0;
   border-radius: 8px;
-  background: #23492f;
+  background: #1d4ed8;
   color: #ffffff;
   cursor: pointer;
   font-weight: 700;
 }
 
 .record-button.stop {
-  background: #8f3328;
+  background: #b42318;
 }
 
 .record-button:disabled {
@@ -119,13 +119,13 @@ h1 {
   border: 1px solid #e0e4dc;
   border-radius: 8px;
   padding: 0.5rem 0.65rem;
-  color: #61705a;
+  color: #5b6472;
 }
 
 .steps li.active,
 .steps li.complete {
-  border-color: #8da982;
-  color: #23492f;
+  border-color: #8ab4f8;
+  color: #1d4ed8;
 }
 
 .tabs {
@@ -141,15 +141,15 @@ h1 {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: #61705a;
+  color: #5b6472;
   cursor: pointer;
   padding: 0.35rem 0.65rem;
 }
 
 .tabs button.active {
-  border-color: #b9c7b0;
-  background: #edf3e9;
-  color: #23492f;
+  border-color: #8ab4f8;
+  background: #edf4ff;
+  color: #1d4ed8;
 }
 
 .text-surface {
@@ -166,7 +166,7 @@ pre {
   margin: 0;
   border: 1px solid #d8ddd1;
   border-radius: 8px;
-  background: #fbfcfa;
+  background: #fbfcfe;
   color: #20261f;
   padding: 1rem;
   resize: none;
@@ -183,8 +183,8 @@ pre {
 }
 
 .status-card {
-  background: #edf3e9;
-  color: #23492f;
+  background: #e8f7f3;
+  color: #0f766e;
 }
 
 .status-card p {
@@ -213,12 +213,24 @@ pre {
   justify-content: center;
   gap: 0.5rem;
   min-height: 2.5rem;
-  border: 1px solid #b9c7b0;
+  border: 1px solid #bcc7d6;
   border-radius: 8px;
   background: #ffffff;
-  color: #23492f;
+  color: #1d4ed8;
   cursor: pointer;
   font-weight: 700;
+}
+
+.secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.output-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .uncertainties {
@@ -242,7 +254,7 @@ pre {
 
 .uncertainties span,
 .muted {
-  color: #61705a;
+  color: #5b6472;
 }
 
 .uncertainties p {
@@ -262,8 +274,28 @@ pre {
 @media (max-width: 920px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(28rem, 1fr) auto;
+    grid-template-rows: auto minmax(34rem, 1fr) auto;
     height: auto;
     min-height: 100vh;
+  }
+
+  .text-surface {
+    min-height: min(58vh, 34rem);
+  }
+}
+
+@media (max-width: 560px) {
+  .app-shell {
+    padding: 0.75rem;
+  }
+
+  .tabs button,
+  .secondary-action {
+    min-width: 0;
+  }
+
+  textarea,
+  pre {
+    min-height: 24rem;
   }
 }
