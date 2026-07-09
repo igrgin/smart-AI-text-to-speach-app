@@ -1,0 +1,10 @@
+app:
+  ai:
+    provider-mode: spring-ai-openai
+    transcription-model: ${OPENAI_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}
+    cleanup-model: ${OPENAI_CLEANUP_MODEL:gpt-5.4-mini}
+
+spring:
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}

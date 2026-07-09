@@ -1,1 +1,21 @@
 .DS_Store
+
+# IDE and local machine state
+.idea/
+
+# Build outputs
+backend/target/
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+frontend/coverage/
+
+# Prototype generated artifacts
+prototypes/**/dist/
+prototypes/**/node_modules/
+
+# Local secret-bearing configuration
+backend/src/main/resources/application-*.local.yml
+.env
+.env.*
+!.env.example

@@ -1,0 +1,7 @@
+app:
+  ai:
+    provider-mode: fake
+
+logging:
+  level:
+    com.igrgin.speachapp: DEBUG
