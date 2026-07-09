@@ -6,11 +6,14 @@ app:
 
 spring:
   ai:
+    chat:
+      client:
+        enabled: true
     model:
       audio:
         speech: none
         transcription: openai
-      chat: none
+      chat: openai
       embedding: none
       image: none
       moderation: none

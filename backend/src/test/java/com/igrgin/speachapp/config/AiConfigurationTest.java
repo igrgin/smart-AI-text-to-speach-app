@@ -18,8 +18,11 @@ class AiConfigurationTest {
     assertThat(application.getProperty("app.ai.provider-mode")).isEqualTo(AiProperties.FAKE_PROVIDER_MODE);
     assertThat(application.getProperty("app.ai.transcription-model"))
         .isEqualTo(AiProperties.DEFAULT_TRANSCRIPTION_MODEL);
+    assertThat(application.getProperty("app.ai.cleanup-model"))
+        .isEqualTo(AiProperties.DEFAULT_CLEANUP_MODEL);
     assertThat(application.getProperty("spring.ai.model.audio.transcription")).isEqualTo("none");
     assertThat(application.getProperty("spring.ai.model.audio.speech")).isEqualTo("none");
+    assertThat(application.getProperty("spring.ai.model.chat")).isEqualTo("none");
     assertThat(application.getProperty("spring.ai.model.embedding")).isEqualTo("none");
     assertThat(application.getProperty("spring.ai.model.image")).isEqualTo("none");
     assertThat(application.getProperty("spring.ai.model.moderation")).isEqualTo("none");
@@ -33,8 +36,11 @@ class AiConfigurationTest {
         .isEqualTo(AiProperties.SPRING_AI_OPENAI_PROVIDER_MODE);
     assertThat(production.getProperty("app.ai.transcription-model"))
         .isEqualTo("${OPENAI_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}");
+    assertThat(production.getProperty("app.ai.cleanup-model"))
+        .isEqualTo("${OPENAI_CLEANUP_MODEL:gpt-5.4-mini}");
     assertThat(production.getProperty("spring.ai.model.audio.transcription")).isEqualTo("openai");
     assertThat(production.getProperty("spring.ai.model.audio.speech")).isEqualTo("none");
+    assertThat(production.getProperty("spring.ai.model.chat")).isEqualTo("openai");
     assertThat(production.getProperty("spring.ai.model.embedding")).isEqualTo("none");
     assertThat(production.getProperty("spring.ai.model.image")).isEqualTo("none");
     assertThat(production.getProperty("spring.ai.model.moderation")).isEqualTo("none");

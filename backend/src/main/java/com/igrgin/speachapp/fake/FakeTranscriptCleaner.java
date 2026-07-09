@@ -4,12 +4,20 @@ import com.igrgin.speachapp.cleanup.CleanupResult;
 import com.igrgin.speachapp.cleanup.CleanupUncertainty;
 import com.igrgin.speachapp.cleanup.TranscriptCleaner;
 import com.igrgin.speachapp.cleanup.UncertaintyReasonCategory;
+import com.igrgin.speachapp.config.AiProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnProperty(
+    prefix = "app.ai",
+    name = "provider-mode",
+    havingValue = AiProperties.FAKE_PROVIDER_MODE,
+    matchIfMissing = true
+)
 public class FakeTranscriptCleaner implements TranscriptCleaner {
   private static final Pattern DISFLUENCY_FILLER = Pattern.compile("\\b(um|uh)\\b\\s*", Pattern.CASE_INSENSITIVE);
   private static final Pattern ACCIDENTAL_REPEATED_THE = Pattern.compile("\\b(the)\\s+\\1\\b", Pattern.CASE_INSENSITIVE);

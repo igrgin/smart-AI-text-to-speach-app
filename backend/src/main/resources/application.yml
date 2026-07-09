@@ -2,6 +2,7 @@ app:
   ai:
     provider-mode: fake
     transcription-model: gpt-4o-mini-transcribe
+    cleanup-model: gpt-5.4-mini
   dictation:
     max-audio-bytes: 25000000
     max-duration-seconds: 600

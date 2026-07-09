@@ -23,7 +23,7 @@ class SpringAiOpenAiTranscriptTranscriberTest {
   private final TranscriptionModel transcriptionModel = org.mockito.Mockito.mock(TranscriptionModel.class);
   private final SpringAiOpenAiTranscriptTranscriber transcriber = new SpringAiOpenAiTranscriptTranscriber(
       transcriptionModel,
-      new AiProperties(AiProperties.SPRING_AI_OPENAI_PROVIDER_MODE, "gpt-4o-mini-transcribe")
+      new AiProperties(AiProperties.SPRING_AI_OPENAI_PROVIDER_MODE, "gpt-4o-mini-transcribe", "gpt-5.4-mini")
   );
 
   @Test
