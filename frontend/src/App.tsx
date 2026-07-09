@@ -1,4 +1,16 @@
-import { AlertTriangle, CheckCircle2, FileText, Loader2, Mic, RotateCcw, Square, UploadCloud, Waves } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clipboard,
+  Download,
+  FileText,
+  Loader2,
+  Mic,
+  RotateCcw,
+  Square,
+  UploadCloud,
+  Waves,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createDictation,
@@ -12,6 +24,7 @@ import {
 
 type WorkflowPhase = "idle" | "recording" | "processing" | "review" | "error";
 type ProcessingStep = "uploading" | "transcribing" | "cleaning";
+type OutputAction = "copied" | "exported" | null;
 type ProblemState = {
   message: string;
   code: string;
@@ -27,8 +40,10 @@ export function App() {
   const [phase, setPhase] = useState<WorkflowPhase>("idle");
   const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null);
   const [result, setResult] = useState<CleanupResult | null>(null);
+  const [editedCleanedText, setEditedCleanedText] = useState("");
   const [activeTab, setActiveTab] = useState<"cleaned" | "raw" | "state">("cleaned");
   const [problem, setProblem] = useState<ProblemState | null>(null);
+  const [outputAction, setOutputAction] = useState<OutputAction>(null);
   const [recordingMimeType, setRecordingMimeType] = useState<RecordingMimeType | null>(() => pickRecordingMimeType());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -53,9 +68,14 @@ export function App() {
       phase,
       processingStep,
       recordingMimeType,
+      rawTranscriptPresent: Boolean(result?.rawTranscript),
+      cleanedTextPresent: Boolean(result?.cleanedText),
+      editedTextLength: editedCleanedText.length,
+      uncertaintyCount: result?.uncertainties.length ?? 0,
       retryableProblem: problem?.retryable ?? false,
+      outputAction,
     }),
-    [phase, problem?.retryable, processingStep, recordingMimeType],
+    [editedCleanedText.length, outputAction, phase, problem?.retryable, processingStep, recordingMimeType, result],
   );
 
   async function startRecording() {
@@ -81,6 +101,8 @@ export function App() {
       recordingStartedAtRef.current = performance.now();
       setProblem(null);
       setResult(null);
+      setEditedCleanedText("");
+      setOutputAction(null);
       setProcessingStep(null);
       setPhase("recording");
 
@@ -180,6 +202,8 @@ export function App() {
       clearProgressTimers();
       setProcessingStep(null);
       setResult(cleanupResult);
+      setEditedCleanedText(cleanupResult.cleanedText);
+      setOutputAction(null);
       setActiveTab("cleaned");
       setPhase("review");
     } catch (requestError) {
@@ -230,6 +254,44 @@ export function App() {
     setProcessingStep(null);
     setProblem(nextProblem);
     setPhase("error");
+  }
+
+  async function copyEditedCleanedText() {
+    if (!result) {
+      return;
+    }
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is unavailable.");
+      }
+
+      await navigator.clipboard.writeText(editedCleanedText);
+      setOutputAction("copied");
+    } catch {
+      showProblem({
+        code: "copy_unavailable",
+        retryable: false,
+        message: "Cleaned Text could not be copied by this browser.",
+      });
+    }
+  }
+
+  function exportEditedCleanedText() {
+    if (!result) {
+      return;
+    }
+
+    const exportBlob = new Blob([editedCleanedText], { type: "text/plain;charset=utf-8" });
+    const exportUrl = URL.createObjectURL(exportBlob);
+    const exportLink = document.createElement("a");
+    exportLink.href = exportUrl;
+    exportLink.download = "cleaned-text.txt";
+    document.body.append(exportLink);
+    exportLink.click();
+    exportLink.remove();
+    URL.revokeObjectURL(exportUrl);
+    setOutputAction("exported");
   }
 
   return (
@@ -293,8 +355,12 @@ export function App() {
           {activeTab === "cleaned" && (
             <textarea
               aria-label="Cleaned Text"
-              value={result?.cleanedText ?? ""}
-              readOnly
+              value={editedCleanedText}
+              onChange={(event) => {
+                setEditedCleanedText(event.target.value);
+                setOutputAction(null);
+              }}
+              readOnly={!result}
               placeholder="Record audio to see Cleaned Text."
             />
           )}
@@ -332,6 +398,21 @@ export function App() {
         )}
 
         <div>
+          <p className="card-label">Output</p>
+          <div className="output-actions">
+            <button className="secondary-action" onClick={copyEditedCleanedText} disabled={!result} aria-label="Copy Cleaned Text">
+              <Clipboard aria-hidden />
+              <span>Copy</span>
+            </button>
+            <button className="secondary-action" onClick={exportEditedCleanedText} disabled={!result} aria-label="Export Cleaned Text">
+              <Download aria-hidden />
+              <span>Export</span>
+            </button>
+          </div>
+          <p className="muted">{outputStatusText(outputAction, Boolean(result))}</p>
+        </div>
+
+        <div>
           <p className="card-label">Cleanup Uncertainties</p>
           {result?.uncertainties.length ? (
             <ul className="uncertainties">
@@ -350,6 +431,18 @@ export function App() {
       </aside>
     </main>
   );
+}
+
+function outputStatusText(outputAction: OutputAction, hasResult: boolean) {
+  if (outputAction === "copied") {
+    return "Copied edited Cleaned Text.";
+  }
+
+  if (outputAction === "exported") {
+    return "Exported edited Cleaned Text.";
+  }
+
+  return hasResult ? "Waiting for local output." : "Waiting for review.";
 }
 
 function pickRecordingMimeType() {

@@ -190,6 +190,58 @@ test("offers retry controls for retryable transcription and cleanup failures", a
   await expectRetryableProblem("cleanup_provider_unavailable", "Retry cleanup", "Cleaning transcript");
 });
 
+test("keeps Cleaned Text editable and uses local edits for copy and export", async () => {
+  const writeText = vi.fn(async () => undefined);
+  const createObjectURL = vi.fn(() => "blob:edited-cleaned-text");
+  const revokeObjectURL = vi.fn();
+  const clickDownload = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL,
+    revokeObjectURL,
+  });
+  await renderRecordedCleanup();
+
+  const cleanedText = await screen.findByRole("textbox", { name: "Cleaned Text" });
+  expect(cleanedText).toHaveValue("This is a quick note about OpenAI and Spring Boot.");
+  expect(cleanedText).not.toHaveAttribute("readonly");
+
+  await userEvent.clear(cleanedText);
+  await userEvent.type(cleanedText, "Edited local Cleaned Text.");
+  await userEvent.click(screen.getByRole("button", { name: "Copy Cleaned Text" }));
+  await userEvent.click(screen.getByRole("button", { name: "Export Cleaned Text" }));
+
+  expect(writeText).toHaveBeenCalledWith("Edited local Cleaned Text.");
+  expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+  await expect((createObjectURL.mock.calls[0][0] as Blob).text()).resolves.toBe("Edited local Cleaned Text.");
+  expect(clickDownload).toHaveBeenCalledTimes(1);
+  expect(revokeObjectURL).toHaveBeenCalledWith("blob:edited-cleaned-text");
+  expect(screen.getByText("Exported edited Cleaned Text.")).toBeInTheDocument();
+});
+
+test("keeps Raw Transcript and State secondary review tabs with Cleanup Uncertainty signals", async () => {
+  await renderRecordedCleanup();
+
+  expect(await screen.findByRole("textbox", { name: "Cleaned Text" })).toHaveValue("This is a quick note about OpenAI and Spring Boot.");
+  expect(screen.queryByLabelText("Raw Transcript")).not.toBeInTheDocument();
+  expect(screen.getByText("HEDGING_LANGUAGE")).toBeInTheDocument();
+  expect(screen.getByText("maybe")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("tab", { name: "Raw Transcript" }));
+
+  expect(screen.getByLabelText("Raw Transcript")).toHaveTextContent("um this is a quick note about open ai and spring boot");
+
+  await userEvent.click(screen.getByRole("tab", { name: "State" }));
+
+  expect(screen.getByLabelText("State")).toHaveTextContent('"reviewOwner": "frontend local review"');
+  expect(screen.getByLabelText("State")).toHaveTextContent('"editedTextLength"');
+  expect(screen.getByLabelText("State")).toHaveTextContent('"uncertaintyCount": 1');
+});
+
 async function expectRetryableProblem(code: string, buttonName: string, retryState: string) {
   vi.unstubAllGlobals();
   vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
@@ -227,6 +279,13 @@ async function expectRetryableProblem(code: string, buttonName: string, retrySta
 async function recordOnce() {
   await userEvent.click(screen.getByRole("button", { name: /start recording/i }));
   await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+}
+
+async function renderRecordedCleanup() {
+  stubMediaDevices(vi.fn(async () => mediaStreamWithStop(vi.fn())));
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(cleanupResult())));
+  render(<App />);
+  await recordOnce();
 }
 
 function stubMediaDevices(getUserMedia: ReturnType<typeof vi.fn>) {
