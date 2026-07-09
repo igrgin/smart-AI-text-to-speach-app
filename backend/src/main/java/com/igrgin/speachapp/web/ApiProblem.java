@@ -18,6 +18,10 @@ public class ApiProblem extends RuntimeException {
     return new ApiProblem(HttpStatus.BAD_REQUEST, code, detail, false);
   }
 
+  public static ApiProblem retryableServiceUnavailable(String code, String detail) {
+    return new ApiProblem(HttpStatus.SERVICE_UNAVAILABLE, code, detail, true);
+  }
+
   public HttpStatus status() {
     return status;
   }
