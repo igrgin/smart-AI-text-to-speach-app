@@ -6,5 +6,16 @@ app:
 
 spring:
   ai:
+    model:
+      audio:
+        speech: none
+        transcription: openai
+      chat: none
+      embedding: none
+      image: none
+      moderation: none
     openai:
       api-key: ${OPENAI_API_KEY}
+      audio:
+        transcription:
+          model: ${OPENAI_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}

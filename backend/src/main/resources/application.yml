@@ -1,4 +1,7 @@
 app:
+  ai:
+    provider-mode: fake
+    transcription-model: gpt-4o-mini-transcribe
   dictation:
     max-audio-bytes: 25000000
     max-duration-seconds: 600
@@ -9,6 +12,18 @@ app:
       - audio/wav
 
 spring:
+  ai:
+    chat:
+      client:
+        enabled: false
+    model:
+      audio:
+        speech: none
+        transcription: none
+      chat: none
+      embedding: none
+      image: none
+      moderation: none
   servlet:
     multipart:
       max-file-size: 25MB
