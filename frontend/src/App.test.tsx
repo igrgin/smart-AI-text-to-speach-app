@@ -2,11 +2,16 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
+  APP_OWNED_PROVIDER_SURFACE_LABELS,
   MOCK_AUDIO_PAYLOAD,
   MOCK_CLEANED_TEXT,
   MOCK_RECORDING_MIME_TYPE,
   mockCleanupResult,
+  PROVIDER_CONTROL_ATTRIBUTES,
+  PROVIDER_CONTROL_NAME_PATTERN,
+  PROVIDER_CONTROL_ROLES,
   PROVIDER_BLIND_TEXT_PATTERN,
+  REVIEW_TAB_NAMES,
 } from "../test/fixtures";
 import { App } from "./App";
 import { MAX_AUDIO_BYTES } from "./api";
@@ -252,8 +257,9 @@ test("keeps the mocked MVP smoke workflow provider-blind through review", async 
 
   expect(await screen.findByRole("textbox", { name: "Cleaned Text" })).toHaveValue(MOCK_CLEANED_TEXT);
   expect(screen.getByLabelText("Review inspector")).toHaveTextContent("Waiting for local output.");
-  expectNoProviderControls();
+  await expectProviderBlindReviewTabs();
 
+  await userEvent.click(screen.getByRole("tab", { name: "Cleaned Text" }));
   await userEvent.click(screen.getByRole("tab", { name: "State" }));
 
   expect(screen.getByLabelText("State")).toHaveTextContent('"endpoint": "POST /api/dictations"');
@@ -325,13 +331,31 @@ function mediaStreamWithStop(stopTrack: () => void) {
 
 function expectNoProviderControls() {
   expect(document.body).not.toHaveTextContent(PROVIDER_BLIND_TEXT_PATTERN);
-  expect(screen.queryByRole("combobox", { name: /provider|model/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole("textbox", { name: /api key|credential|token|secret/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole("textbox", { name: /provider|model/i })).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/OPENAI_API_KEY|OPENAI_TRANSCRIPTION_MODEL|OPENAI_CLEANUP_MODEL/i)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/provider/i)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/model/i)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/api key|credential|token|secret/i)).not.toBeInTheDocument();
+
+  for (const role of PROVIDER_CONTROL_ROLES) {
+    expect(screen.queryAllByRole(role, { name: PROVIDER_CONTROL_NAME_PATTERN })).toHaveLength(0);
+  }
+
+  expect(screen.queryByLabelText(PROVIDER_CONTROL_NAME_PATTERN)).not.toBeInTheDocument();
+
+  for (const control of document.querySelectorAll("button,input,textarea,select,[role]")) {
+    const values = PROVIDER_CONTROL_ATTRIBUTES.map((attribute) => control.getAttribute(attribute));
+    const visibleText = control.matches("input,textarea,select") ? null : control.textContent;
+    expect([...values, visibleText].filter(Boolean).join(" ")).not.toMatch(PROVIDER_CONTROL_NAME_PATTERN);
+  }
+
+  for (const label of APP_OWNED_PROVIDER_SURFACE_LABELS) {
+    for (const surface of screen.queryAllByLabelText(label)) {
+      expect(surface).not.toHaveTextContent(PROVIDER_CONTROL_NAME_PATTERN);
+    }
+  }
+}
+
+async function expectProviderBlindReviewTabs() {
+  for (const tabName of REVIEW_TAB_NAMES) {
+    await userEvent.click(screen.getByRole("tab", { name: tabName }));
+    expectNoProviderControls();
+  }
 }
 
 function jsonResponse(body: unknown, status = 200) {

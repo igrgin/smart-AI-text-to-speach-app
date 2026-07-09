@@ -1,7 +1,9 @@
 declare global {
   interface Window {
-    __mockAudioPayload: string;
-    __mockRecordingMimeType: string;
+    __mockRecording: {
+      audioPayload: string;
+      recordingMimeType: string;
+    };
   }
 }
 
