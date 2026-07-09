@@ -1,0 +1,15 @@
+app:
+  dictation:
+    max-audio-bytes: 25000000
+    max-duration-seconds: 600
+    supported-audio-types:
+      - audio/webm
+      - audio/mp4
+      - audio/ogg
+      - audio/wav
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
