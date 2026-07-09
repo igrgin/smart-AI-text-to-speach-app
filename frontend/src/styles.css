@@ -85,6 +85,10 @@ h1 {
   font-weight: 700;
 }
 
+.record-button.stop {
+  background: #8f3328;
+}
+
 .record-button:disabled {
   cursor: progress;
   opacity: 0.8;
@@ -93,7 +97,8 @@ h1 {
 .record-button svg,
 .steps svg,
 .status-card svg,
-.problem svg {
+.problem svg,
+.secondary-action svg {
   width: 1rem;
   height: 1rem;
 }
@@ -189,6 +194,31 @@ pre {
 .problem {
   background: #fff3ed;
   color: #9b3f20;
+}
+
+.problem span,
+.problem small {
+  display: block;
+}
+
+.problem small {
+  margin-top: 0.25rem;
+  color: #79402e;
+  font-size: 0.75rem;
+}
+
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  border: 1px solid #b9c7b0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #23492f;
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .uncertainties {
