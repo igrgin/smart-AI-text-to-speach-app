@@ -1,4 +1,8 @@
-export type UncertaintyReasonCategory = "HEDGING_LANGUAGE" | "AMBIGUOUS_SPEECH_ARTIFACT";
+export type UncertaintyReasonCategory =
+  | "HEDGING_LANGUAGE"
+  | "AMBIGUOUS_SPEECH_ARTIFACT"
+  | "SPOKEN_PUNCTUATION_AMBIGUITY"
+  | "AMBIGUOUS_INTENT";
 
 export type CleanupUncertainty = {
   text: string;
