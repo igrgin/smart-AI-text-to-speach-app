@@ -4,4 +4,8 @@ public class TranscriptionProviderUnavailableException extends RuntimeException 
   public TranscriptionProviderUnavailableException(String message) {
     super(message);
   }
+
+  public TranscriptionProviderUnavailableException(String message, Throwable cause) {
+    super(message, cause);
+  }
 }
