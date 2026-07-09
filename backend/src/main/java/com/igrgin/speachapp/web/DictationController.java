@@ -33,7 +33,7 @@ public class DictationController {
       @RequestParam(required = false) Double durationSeconds
   ) throws IOException {
     String contentType = audio.getContentType();
-    validateAudio(audio, contentType, durationSeconds);
+    validateAudio(audio, contentType, recordingMimeType, durationSeconds);
 
     return dictationService.createCleanupResult(new DictationRequest(
         audio.getBytes(),
@@ -43,12 +43,17 @@ public class DictationController {
     ));
   }
 
-  private void validateAudio(MultipartFile audio, String contentType, Double durationSeconds) {
+  private void validateAudio(
+      MultipartFile audio,
+      String contentType,
+      String recordingMimeType,
+      Double durationSeconds
+  ) {
     if (audio.isEmpty()) {
       throw ApiProblem.badRequest("empty_audio", "The audio part must contain browser-recorded audio.");
     }
 
-    if (contentType == null || !properties.supportedAudioTypes().contains(contentType)) {
+    if (!isSupportedAudioType(contentType) || (recordingMimeType != null && !isSupportedAudioType(recordingMimeType))) {
       throw ApiProblem.badRequest(
           "unsupported_audio_type",
           "Only browser-recorded audio containers such as audio/webm, audio/mp4, audio/ogg, or audio/wav are accepted."
@@ -59,8 +64,16 @@ public class DictationController {
       throw ApiProblem.badRequest("audio_too_large", "The uploaded audio exceeds the MVP request limit.");
     }
 
-    if (durationSeconds != null && (durationSeconds <= 0 || durationSeconds > properties.maxDurationSeconds())) {
+    if (durationSeconds != null && (
+        !Double.isFinite(durationSeconds)
+            || durationSeconds <= 0
+            || durationSeconds > properties.maxDurationSeconds()
+    )) {
       throw ApiProblem.badRequest("invalid_duration", "The reported recording duration is outside the MVP policy.");
     }
+  }
+
+  private boolean isSupportedAudioType(String audioType) {
+    return audioType != null && properties.supportedAudioTypes().contains(audioType);
   }
 }
