@@ -29,6 +29,8 @@ mvn -f backend/pom.xml test
 npm --prefix frontend test
 ```
 
+The frontend test command runs Vitest unit coverage plus a Playwright responsive workflow check. It installs/checks Playwright's managed Chromium automatically; set `PLAYWRIGHT_CHROME_CHANNEL=chrome` only when you explicitly want to use a locally installed Chrome channel.
+
 ## Configuration
 
 Shared backend configuration lives in `backend/src/main/resources/application.yml` and does not activate a Spring profile. Choose `dev` or `prod` externally with `SPRING_PROFILES_ACTIVE` when needed.

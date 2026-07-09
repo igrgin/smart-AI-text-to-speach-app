@@ -9,6 +9,8 @@ frontend/dist/
 frontend/node_modules/
 frontend/.vite/
 frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
 
 # Prototype generated artifacts
 prototypes/**/dist/

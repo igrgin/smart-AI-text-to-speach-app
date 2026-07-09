@@ -1,6 +1,13 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import {
+  MOCK_AUDIO_PAYLOAD,
+  MOCK_CLEANED_TEXT,
+  MOCK_RECORDING_MIME_TYPE,
+  mockCleanupResult,
+  PROVIDER_BLIND_TEXT_PATTERN,
+} from "../test/fixtures";
 import { App } from "./App";
 import { MAX_AUDIO_BYTES } from "./api";
 
@@ -12,7 +19,7 @@ let supportedMimeTypes = ["audio/webm"];
 class FakeMediaRecorder {
   static isTypeSupported = vi.fn((mimeType: string) => supportedMimeTypes.includes(mimeType));
   static constructorError: Error | null = null;
-  static nextData = new Blob(["recorded browser audio"], { type: "audio/webm" });
+  static nextData = new Blob([MOCK_AUDIO_PAYLOAD], { type: MOCK_RECORDING_MIME_TYPE });
 
   readonly mimeType: string;
   state: FakeRecorderState = "inactive";
@@ -45,7 +52,7 @@ beforeEach(() => {
   recorderInstances = [];
   supportedMimeTypes = ["audio/webm"];
   FakeMediaRecorder.constructorError = null;
-  FakeMediaRecorder.nextData = new Blob(["recorded browser audio"], { type: "audio/webm" });
+  FakeMediaRecorder.nextData = new Blob([MOCK_AUDIO_PAYLOAD], { type: MOCK_RECORDING_MIME_TYPE });
   FakeMediaRecorder.isTypeSupported.mockClear();
   vi.restoreAllMocks();
   vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
@@ -62,7 +69,7 @@ test("requests microphone permission only on start, records with a probed MIME t
   const stopTrack = vi.fn();
   const getUserMedia = vi.fn(async () => mediaStreamWithStop(stopTrack));
   stubMediaDevices(getUserMedia);
-  const fetchMock = vi.fn(async () => jsonResponse(cleanupResult()));
+  const fetchMock = vi.fn(async () => jsonResponse(mockCleanupResult()));
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
@@ -77,7 +84,7 @@ test("requests microphone permission only on start, records with a probed MIME t
   await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
   expect(stopTrack).toHaveBeenCalledTimes(1);
-  expect(await screen.findByDisplayValue("This is a quick note about OpenAI and Spring Boot.")).toBeInTheDocument();
+  expect(await screen.findByDisplayValue(MOCK_CLEANED_TEXT)).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/dictations",
     expect.objectContaining({
@@ -91,9 +98,7 @@ test("requests microphone permission only on start, records with a probed MIME t
   expect(body.get("durationSeconds")).toBeTruthy();
   expect((body.get("audio") as File).name).toBe("browser-recording.m4a");
   expect((body.get("audio") as File).type).toBe("audio/mp4");
-  expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/model/i)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/provider/i)).not.toBeInTheDocument();
+  expectNoProviderControls();
 });
 
 test("shows upload, transcription, cleanup, and review progress states", async () => {
@@ -110,9 +115,9 @@ test("shows upload, transcription, cleanup, and review progress states", async (
   expect(await screen.findByText("Transcribing audio")).toBeInTheDocument();
   expect(await screen.findByText("Cleaning transcript")).toBeInTheDocument();
 
-  pendingResponse.resolve(jsonResponse(cleanupResult()));
+  pendingResponse.resolve(jsonResponse(mockCleanupResult()));
 
-  expect(await screen.findByDisplayValue("This is a quick note about OpenAI and Spring Boot.")).toBeInTheDocument();
+  expect(await screen.findByDisplayValue(MOCK_CLEANED_TEXT)).toBeInTheDocument();
   expect(screen.getByText("Ready for review")).toBeInTheDocument();
 });
 
@@ -207,7 +212,7 @@ test("keeps Cleaned Text editable and uses local edits for copy and export", asy
   await renderRecordedCleanup();
 
   const cleanedText = await screen.findByRole("textbox", { name: "Cleaned Text" });
-  expect(cleanedText).toHaveValue("This is a quick note about OpenAI and Spring Boot.");
+  expect(cleanedText).toHaveValue(MOCK_CLEANED_TEXT);
   expect(cleanedText).not.toHaveAttribute("readonly");
 
   await userEvent.clear(cleanedText);
@@ -226,7 +231,7 @@ test("keeps Cleaned Text editable and uses local edits for copy and export", asy
 test("keeps Raw Transcript and State secondary review tabs with Cleanup Uncertainty signals", async () => {
   await renderRecordedCleanup();
 
-  expect(await screen.findByRole("textbox", { name: "Cleaned Text" })).toHaveValue("This is a quick note about OpenAI and Spring Boot.");
+  expect(await screen.findByRole("textbox", { name: "Cleaned Text" })).toHaveValue(MOCK_CLEANED_TEXT);
   expect(screen.queryByLabelText("Raw Transcript")).not.toBeInTheDocument();
   expect(screen.getByText("HEDGING_LANGUAGE")).toBeInTheDocument();
   expect(screen.getByText("maybe")).toBeInTheDocument();
@@ -240,6 +245,23 @@ test("keeps Raw Transcript and State secondary review tabs with Cleanup Uncertai
   expect(screen.getByLabelText("State")).toHaveTextContent('"reviewOwner": "frontend local review"');
   expect(screen.getByLabelText("State")).toHaveTextContent('"editedTextLength"');
   expect(screen.getByLabelText("State")).toHaveTextContent('"uncertaintyCount": 1');
+});
+
+test("keeps the mocked MVP smoke workflow provider-blind through review", async () => {
+  await renderRecordedCleanup();
+
+  expect(await screen.findByRole("textbox", { name: "Cleaned Text" })).toHaveValue(MOCK_CLEANED_TEXT);
+  expect(screen.getByLabelText("Review inspector")).toHaveTextContent("Waiting for local output.");
+  expectNoProviderControls();
+
+  await userEvent.click(screen.getByRole("tab", { name: "State" }));
+
+  expect(screen.getByLabelText("State")).toHaveTextContent('"endpoint": "POST /api/dictations"');
+  expect(screen.getByLabelText("State")).toHaveTextContent('"reviewOwner": "frontend local review"');
+  expect(screen.getByLabelText("State")).not.toHaveTextContent("apiKey");
+  expect(screen.getByLabelText("State")).not.toHaveTextContent("modelSelector");
+  expect(screen.getByLabelText("State")).not.toHaveTextContent("providerSelector");
+  expectNoProviderControls();
 });
 
 async function expectRetryableProblem(code: string, buttonName: string, retryState: string) {
@@ -270,8 +292,8 @@ async function expectRetryableProblem(code: string, buttonName: string, retrySta
   await userEvent.click(screen.getByRole("button", { name: buttonName }));
 
   expect(await screen.findByText(retryState)).toBeInTheDocument();
-  retryResponse.resolve(jsonResponse(cleanupResult()));
-  expect(await screen.findByDisplayValue("This is a quick note about OpenAI and Spring Boot.")).toBeInTheDocument();
+  retryResponse.resolve(jsonResponse(mockCleanupResult()));
+  expect(await screen.findByDisplayValue(MOCK_CLEANED_TEXT)).toBeInTheDocument();
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   unmount();
 }
@@ -283,7 +305,7 @@ async function recordOnce() {
 
 async function renderRecordedCleanup() {
   stubMediaDevices(vi.fn(async () => mediaStreamWithStop(vi.fn())));
-  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(cleanupResult())));
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(mockCleanupResult())));
   render(<App />);
   await recordOnce();
 }
@@ -301,18 +323,15 @@ function mediaStreamWithStop(stopTrack: () => void) {
   } as unknown as MediaStream;
 }
 
-function cleanupResult() {
-  return {
-    rawTranscript: "um this is a quick note about open ai and spring boot",
-    cleanedText: "This is a quick note about OpenAI and Spring Boot.",
-    uncertainties: [
-      {
-        text: "maybe",
-        reasonCategory: "HEDGING_LANGUAGE",
-        reason: "Hedging Language preserved during Conservative Cleanup.",
-      },
-    ],
-  };
+function expectNoProviderControls() {
+  expect(document.body).not.toHaveTextContent(PROVIDER_BLIND_TEXT_PATTERN);
+  expect(screen.queryByRole("combobox", { name: /provider|model/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: /api key|credential|token|secret/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: /provider|model/i })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/OPENAI_API_KEY|OPENAI_TRANSCRIPTION_MODEL|OPENAI_CLEANUP_MODEL/i)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/provider/i)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/model/i)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/api key|credential|token|secret/i)).not.toBeInTheDocument();
 }
 
 function jsonResponse(body: unknown, status = 200) {
