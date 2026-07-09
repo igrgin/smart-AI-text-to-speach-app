@@ -1,38 +1,235 @@
-import { AlertTriangle, CheckCircle2, FileText, Loader2, Mic, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
-import { createDictation, type CleanupResult } from "./api";
+import { AlertTriangle, CheckCircle2, FileText, Loader2, Mic, RotateCcw, Square, UploadCloud, Waves } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  createDictation,
+  DictationProblemError,
+  MAX_AUDIO_BYTES,
+  MAX_RECORDING_SECONDS,
+  RECORDING_FORMATS,
+  type CleanupResult,
+  type RecordingMimeType,
+} from "./api";
 
-type WorkflowPhase = "idle" | "uploading" | "review" | "error";
+type WorkflowPhase = "idle" | "recording" | "processing" | "review" | "error";
+type ProcessingStep = "uploading" | "transcribing" | "cleaning";
+type ProblemState = {
+  message: string;
+  code: string;
+  retryable: boolean;
+};
+type RecordedAudio = {
+  blob: Blob;
+  mimeType: RecordingMimeType;
+  durationSeconds: number;
+};
 
 export function App() {
   const [phase, setPhase] = useState<WorkflowPhase>("idle");
+  const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null);
   const [result, setResult] = useState<CleanupResult | null>(null);
   const [activeTab, setActiveTab] = useState<"cleaned" | "raw" | "state">("cleaned");
-  const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<ProblemState | null>(null);
+  const [recordingMimeType, setRecordingMimeType] = useState<RecordingMimeType | null>(() => pickRecordingMimeType());
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef<number>(0);
+  const progressTimersRef = useRef<number[]>([]);
+  const recordingLimitTimerRef = useRef<number | null>(null);
+  const lastRecordingRef = useRef<RecordedAudio | null>(null);
+
+  useEffect(() => {
+    return () => {
+      clearProgressTimers();
+      clearRecordingLimitTimer();
+      stopStreamTracks();
+    };
+  }, []);
 
   const stateSummary = useMemo(
     () => ({
       endpoint: "POST /api/dictations",
       reviewOwner: "frontend local review",
       phase,
+      processingStep,
+      recordingMimeType,
+      retryableProblem: problem?.retryable ?? false,
     }),
-    [phase],
+    [phase, problem?.retryable, processingStep, recordingMimeType],
   );
 
-  async function runFakeProviderLoop() {
-    setPhase("uploading");
-    setError(null);
+  async function startRecording() {
+    const selectedMimeType = pickRecordingMimeType();
+    setRecordingMimeType(selectedMimeType);
+
+    if (!selectedMimeType || !navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder === "undefined") {
+      showProblem({
+        code: "unsupported_browser_recording",
+        retryable: false,
+        message: "This browser does not support the recording workflow required for the MVP.",
+      });
+      return;
+    }
 
     try {
-      const audio = new Blob(["fake browser audio"], { type: "audio/webm" });
-      const cleanupResult = await createDictation(audio);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
+
+      chunksRef.current = [];
+      mediaRecorderRef.current = recorder;
+      recordingStartedAtRef.current = performance.now();
+      setProblem(null);
+      setResult(null);
+      setProcessingStep(null);
+      setPhase("recording");
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const durationSeconds = Math.max(0.1, (performance.now() - recordingStartedAtRef.current) / 1000);
+        const audio = new Blob(chunksRef.current, { type: selectedMimeType });
+        const recordedAudio = { blob: audio, mimeType: selectedMimeType, durationSeconds };
+        const validationProblem = validateRecordedAudio(recordedAudio);
+
+        if (validationProblem) {
+          showProblem(validationProblem);
+          return;
+        }
+
+        lastRecordingRef.current = recordedAudio;
+        void processRecording(recordedAudio, "uploading");
+      };
+
+      recorder.start();
+      recordingLimitTimerRef.current = window.setTimeout(stopRecording, MAX_RECORDING_SECONDS * 1000);
+    } catch (recordingError) {
+      clearRecordingLimitTimer();
+      stopStreamTracks();
+      showProblem({
+        code: "recording_unavailable",
+        retryable: false,
+        message: recordingError instanceof Error ? recordingError.message : "Microphone recording could not be started.",
+      });
+    }
+  }
+
+  function stopRecording() {
+    const recorder = mediaRecorderRef.current;
+    clearRecordingLimitTimer();
+
+    if (!recorder || recorder.state === "inactive") {
+      stopStreamTracks();
+      return;
+    }
+
+    recorder.stop();
+    stopStreamTracks();
+  }
+
+  function validateRecordedAudio(recordedAudio: RecordedAudio): ProblemState | null {
+    if (recordedAudio.blob.size === 0) {
+      return {
+        code: "empty_audio",
+        retryable: false,
+        message: "No browser-recorded audio was captured.",
+      };
+    }
+
+    if (recordedAudio.blob.size > MAX_AUDIO_BYTES) {
+      return {
+        code: "audio_too_large",
+        retryable: false,
+        message: "The recorded audio exceeds the MVP request limit.",
+      };
+    }
+
+    if (recordedAudio.durationSeconds > MAX_RECORDING_SECONDS) {
+      return {
+        code: "invalid_duration",
+        retryable: false,
+        message: "The recording is longer than the MVP duration limit.",
+      };
+    }
+
+    return null;
+  }
+
+  async function retryLastRecording() {
+    if (!lastRecordingRef.current || !problem?.retryable) {
+      return;
+    }
+
+    const retryStep = problem.code === "cleanup_provider_unavailable" ? "cleaning" : "transcribing";
+    await processRecording(lastRecordingRef.current, retryStep);
+  }
+
+  async function processRecording(recordedAudio: RecordedAudio, initialStep: ProcessingStep) {
+    queueProcessingProgress(initialStep);
+    setPhase("processing");
+    setProblem(null);
+
+    try {
+      const cleanupResult = await createDictation(recordedAudio.blob, {
+        recordingMimeType: recordedAudio.mimeType,
+        durationSeconds: recordedAudio.durationSeconds,
+      });
+      clearProgressTimers();
+      setProcessingStep(null);
       setResult(cleanupResult);
       setActiveTab("cleaned");
       setPhase("review");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Dictation request failed");
-      setPhase("error");
+      clearProgressTimers();
+      showProblem(problemFromError(requestError));
     }
+  }
+
+  function queueProcessingProgress(initialStep: ProcessingStep) {
+    clearProgressTimers();
+    setProcessingStep(initialStep);
+
+    if (initialStep === "uploading") {
+      progressTimersRef.current.push(window.setTimeout(() => setProcessingStep("transcribing"), 350));
+      progressTimersRef.current.push(window.setTimeout(() => setProcessingStep("cleaning"), 800));
+    }
+
+    if (initialStep === "transcribing") {
+      progressTimersRef.current.push(window.setTimeout(() => setProcessingStep("cleaning"), 650));
+    }
+  }
+
+  function clearProgressTimers() {
+    for (const timer of progressTimersRef.current) {
+      window.clearTimeout(timer);
+    }
+
+    progressTimersRef.current = [];
+  }
+
+  function clearRecordingLimitTimer() {
+    if (recordingLimitTimerRef.current !== null) {
+      window.clearTimeout(recordingLimitTimerRef.current);
+      recordingLimitTimerRef.current = null;
+    }
+  }
+
+  function stopStreamTracks() {
+    for (const track of streamRef.current?.getTracks() ?? []) {
+      track.stop();
+    }
+
+    streamRef.current = null;
+  }
+
+  function showProblem(nextProblem: ProblemState) {
+    clearProgressTimers();
+    setProcessingStep(null);
+    setProblem(nextProblem);
+    setPhase("error");
   }
 
   return (
@@ -43,14 +240,38 @@ export function App() {
           <h1>Smart AI Text To Speach</h1>
         </div>
 
-        <button className="record-button" onClick={runFakeProviderLoop} disabled={phase === "uploading"}>
-          {phase === "uploading" ? <Loader2 aria-hidden className="spin" /> : <Mic aria-hidden />}
-          <span>{phase === "uploading" ? "Processing" : "Run fake loop"}</span>
-        </button>
+        {phase === "recording" ? (
+          <button className="record-button stop" onClick={stopRecording}>
+            <Square aria-hidden />
+            <span>Stop recording</span>
+          </button>
+        ) : (
+          <button className="record-button" onClick={startRecording} disabled={phase === "processing"}>
+            {phase === "processing" ? <Loader2 aria-hidden className="spin" /> : <Mic aria-hidden />}
+            <span>{phase === "processing" ? "Processing" : "Start recording"}</span>
+          </button>
+        )}
 
         <ol className="steps" aria-label="Workflow progress">
-          <Step icon={<Mic aria-hidden />} label="Upload" active={phase === "uploading"} complete={phase === "review"} />
-          <Step icon={<Sparkles aria-hidden />} label="Cleanup" active={phase === "uploading"} complete={phase === "review"} />
+          <Step icon={<Mic aria-hidden />} label="Record" active={phase === "recording"} complete={phase === "processing" || phase === "review"} />
+          <Step
+            icon={<UploadCloud aria-hidden />}
+            label="Upload"
+            active={processingStep === "uploading"}
+            complete={isStepComplete("uploading", processingStep, phase)}
+          />
+          <Step
+            icon={<Waves aria-hidden />}
+            label="Transcription"
+            active={processingStep === "transcribing"}
+            complete={isStepComplete("transcribing", processingStep, phase)}
+          />
+          <Step
+            icon={<Loader2 aria-hidden className={processingStep === "cleaning" ? "spin" : undefined} />}
+            label="Cleanup"
+            active={processingStep === "cleaning"}
+            complete={phase === "review"}
+          />
           <Step icon={<FileText aria-hidden />} label="Review" active={phase === "review"} complete={phase === "review"} />
         </ol>
       </section>
@@ -74,7 +295,7 @@ export function App() {
               aria-label="Cleaned Text"
               value={result?.cleanedText ?? ""}
               readOnly
-              placeholder="Run the fake provider loop to see Cleaned Text."
+              placeholder="Record audio to see Cleaned Text."
             />
           )}
           {activeTab === "raw" && (
@@ -86,18 +307,28 @@ export function App() {
 
       <aside className="inspector" aria-label="Review inspector">
         <div className="status-card">
-          {phase === "review" ? <CheckCircle2 aria-hidden /> : <Sparkles aria-hidden />}
+          {phase === "review" ? <CheckCircle2 aria-hidden /> : phase === "recording" ? <Mic aria-hidden /> : <Loader2 aria-hidden className={phase === "processing" ? "spin" : undefined} />}
           <div>
-            <p className="card-label">Cleanup Result</p>
-            <p>{phase === "review" ? "Ready for review" : "Waiting for fake upload"}</p>
+            <p className="card-label">Workflow State</p>
+            <p>{statusText(phase, processingStep)}</p>
           </div>
         </div>
 
-        {error && (
+        {problem && (
           <div className="problem" role="alert">
             <AlertTriangle aria-hidden />
-            <span>{error}</span>
+            <div>
+              <span>{problem.message}</span>
+              <small>{problem.code}</small>
+            </div>
           </div>
+        )}
+
+        {problem?.retryable && lastRecordingRef.current && (
+          <button className="secondary-action" onClick={retryLastRecording}>
+            <RotateCcw aria-hidden />
+            <span>{problem.code === "cleanup_provider_unavailable" ? "Retry cleanup" : "Retry transcription"}</span>
+          </button>
         )}
 
         <div>
@@ -119,6 +350,67 @@ export function App() {
       </aside>
     </main>
   );
+}
+
+function pickRecordingMimeType() {
+  if (typeof window === "undefined" || typeof window.MediaRecorder === "undefined") {
+    return null;
+  }
+
+  return RECORDING_FORMATS.find((format) => window.MediaRecorder.isTypeSupported(format.mimeType))?.mimeType ?? null;
+}
+
+function problemFromError(error: unknown): ProblemState {
+  if (error instanceof DictationProblemError) {
+    return {
+      code: error.code,
+      retryable: error.retryable,
+      message: error.message,
+    };
+  }
+
+  return {
+    code: "dictation_request_failed",
+    retryable: false,
+    message: error instanceof Error ? error.message : "Dictation request failed.",
+  };
+}
+
+function statusText(phase: WorkflowPhase, processingStep: ProcessingStep | null) {
+  if (phase === "recording") {
+    return "Recording microphone audio";
+  }
+
+  if (phase === "review") {
+    return "Ready for review";
+  }
+
+  if (phase === "error") {
+    return "Needs attention";
+  }
+
+  if (processingStep === "uploading") {
+    return "Uploading audio";
+  }
+
+  if (processingStep === "transcribing") {
+    return "Transcribing audio";
+  }
+
+  if (processingStep === "cleaning") {
+    return "Cleaning transcript";
+  }
+
+  return "Ready to record";
+}
+
+function isStepComplete(step: ProcessingStep, currentStep: ProcessingStep | null, phase: WorkflowPhase) {
+  if (phase === "review") {
+    return true;
+  }
+
+  const order: ProcessingStep[] = ["uploading", "transcribing", "cleaning"];
+  return currentStep !== null && order.indexOf(currentStep) > order.indexOf(step);
 }
 
 function Step({
